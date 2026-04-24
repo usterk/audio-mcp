@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 
+from app.tools import transcribe as transcribe_tool
+
 INSTRUCTIONS = """\
 audio-mcp — remote MCP server for audio transcription and text-to-speech.
 
@@ -35,4 +37,6 @@ authentication is required within the tailnet.
 
 
 def create_mcp() -> FastMCP:
-    return FastMCP(name="audio-mcp", instructions=INSTRUCTIONS)
+    mcp = FastMCP(name="audio-mcp", instructions=INSTRUCTIONS)
+    transcribe_tool.register(mcp)
+    return mcp
