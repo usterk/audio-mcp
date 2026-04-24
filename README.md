@@ -1,24 +1,71 @@
 # audio-mcp
 
-MCP server for audio processing — transcription and text-to-speech — deployed to a private home-lab
-server (Aurora) and accessible over a Tailscale VPN from any client (Claude Desktop, Claude Code,
-Gemini CLI, mobile agents).
+Remote MCP server for audio processing, deployed to Aurora and reachable only over Tailscale.
 
-Status: **design phase**. See [the design doc](docs/superpowers/specs/2026-04-24-audio-mcp-design.md)
-for the v1.0 specification.
+## What it does
 
-## Quick overview
+- **Transcribe** audio from YouTube URLs, HTTP(S) audio URLs, inline base64 payloads, or previously
+  uploaded files. Backends: Groq Whisper (cloud, default) or local `faster-whisper` on CPU.
+- **Generate audio** from text, with three backends: `piper` (local, free, Polish default voice),
+  Google Cloud TTS Standard, OpenAI `gpt-4o-mini-tts`. Polish text is normalised (URLs and long
+  hashes removed, acronyms respelled phonetically).
+- **Job artefacts** (`transcription.json`, `transcription.txt`, `audio.mp3`) are downloadable via
+  HTTP using URLs returned in each tool response.
 
-Two MCP tools plus an HTTP API:
+## Connecting clients
 
-- `transcribe(source, backend, ...)` — YouTube URL, remote audio URL, base64 payload, or `upload_id`.
-  Backends: `groq` (cloud, default) and `faster-whisper` (CPU local).
-- `generate_audio(text, backend, voice, ...)` — TTS with text preprocessing for Polish.
-  Backends: `piper` (local CPU, default, free), `gcloud` (Google Cloud TTS Standard),
-  `openai` (`gpt-4o-mini-tts`).
+All clients connect over Tailscale to `https://audio-mcp.uaru-teeth.ts.net/mcp`.
 
-Large file uploads, job metadata, and final downloads go through an HTTP API alongside the MCP
-endpoint. Everything is served over HTTPS via a Tailscale sidecar container at
-`https://audio-mcp.<tailnet>.ts.net`.
+### Claude Desktop
 
-See [docs/superpowers/specs/2026-04-24-audio-mcp-design.md](docs/superpowers/specs/2026-04-24-audio-mcp-design.md).
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "audio-mcp": {
+      "type": "http",
+      "url": "https://audio-mcp.uaru-teeth.ts.net/mcp"
+    }
+  }
+}
+```
+
+### Claude Code
+
+Edit `~/.claude/.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "audio-mcp": {
+      "type": "http",
+      "url": "https://audio-mcp.uaru-teeth.ts.net/mcp",
+      "timeout": 900000
+    }
+  }
+}
+```
+
+The raised `timeout` covers long CPU transcriptions.
+
+## Development
+
+```bash
+uv sync
+make dev           # run server locally
+make test          # run tests with coverage
+make lint          # ruff check
+```
+
+Requirements: Python 3.12, uv, ffmpeg.
+
+## Architecture
+
+- **FastAPI** + **FastMCP v3** — HTTP + MCP protocol
+- **Groq** — cloud transcription (Whisper)
+- **faster-whisper** — local CPU transcription
+- **piper** — local TTS (Polish, free)
+- **Google Cloud TTS** / **OpenAI TTS** — cloud TTS options
+- **SQLite** (aiosqlite) — job and upload metadata
+- **Tailscale** — secure network access
