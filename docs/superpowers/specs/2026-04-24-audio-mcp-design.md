@@ -252,8 +252,10 @@ Jobs are written at start (`status='running'`) and updated on completion. This i
 | `local` | `faster-whisper` (CTranslate2) | `small` | — | Runs on CPU, ~2–4× faster than whisper.cpp at equal quality. |
 
 YouTube fast path: when `backend == "groq"` and the video has transcripts, use
-`youtube-transcript-api` to skip audio download entirely. For `local`, always download audio and run
-through the model.
+`youtube-transcript-api` to skip audio download entirely. If transcripts are unavailable for a
+given video (common for recently uploaded or non-English videos), fall back to downloading the
+audio via `yt-dlp` and running it through Groq Whisper. For `backend == "local"`, always download
+audio and run it through faster-whisper.
 
 Audio retrieval: `yt-dlp` for YouTube and arbitrary HTTP URLs, falling back to plain HTTP download
 for direct audio files. `ffmpeg` normalizes to 16 kHz mono WAV for whisper backends.
@@ -364,8 +366,10 @@ Follow the same app pattern already used for FlowOS:
   templates, with `IMAGE_TAG` and non-secret env vars.
 - `inventories/production/group_vars/poziomka/apps_vault.yml` — secrets: `TS_AUTHKEY`,
   `GROQ_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_TTS_SERVICE_ACCOUNT_JSON` (full JSON body). The Ansible
-  role writes the last one to `/opt/apps/audio-mcp/data/gcp-credentials.json` before container
-  start.
+  role writes the last one to `/opt/apps/audio-mcp/gcp-credentials.json` before container start;
+  the Docker Compose file then bind-mounts it read-only into the app container at
+  `/secrets/gcp.json`, and `GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp.json` is set via
+  `environment:` so the Google SDK picks it up automatically.
 
 Deploy (manual): `ansible-playbook playbooks/deploy-app.yml -e "target_app=audio-mcp"`.
 
