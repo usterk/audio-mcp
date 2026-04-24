@@ -10,6 +10,7 @@ from app.concurrency import ConcurrencyLimits, Semaphores
 from app.config import Settings, get_settings
 from app.http import health as health_router
 from app.http import landing as landing_router
+from app.http import upload as upload_router
 from app.mcp_server import create_mcp
 from app.storage.jobs_db import JobsDB
 
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="audio-mcp", lifespan=lifespan)
     app.include_router(health_router.router)
     app.include_router(landing_router.router)
+    app.include_router(upload_router.router)
     app.mount("/mcp", mcp_app)
     return app
 
