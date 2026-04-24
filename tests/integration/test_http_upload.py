@@ -36,8 +36,9 @@ def test_upload_metadata_endpoint(client: TestClient) -> None:
 def test_upload_oversize_returns_413(client: TestClient, monkeypatch) -> None:
     monkeypatch.setenv("AUDIO_MCP_UPLOAD_MAX_BYTES", "4")
     # Rebuild the client to pick up new env.
-    from fastapi.testclient import TestClient as TC
-    from app.main import create_app
+    from fastapi.testclient import TestClient as TC  # noqa: N817, PLC0415
+
+    from app.main import create_app  # noqa: PLC0415
 
     app = create_app()
     with TC(app) as c:

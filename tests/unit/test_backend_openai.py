@@ -69,4 +69,4 @@ async def test_style_omitted_when_blank(tmp_path: Path) -> None:
             "hi", voice="alloy", model="", output_path=out, format="mp3", style=""
         )
     _, kwargs = create.call_args
-    assert "instructions" not in kwargs or kwargs["instructions"] == ""
+    assert "instructions" not in kwargs
