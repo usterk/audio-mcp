@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.resolver.youtube import try_youtube, extract_video_id
+from app.resolver.youtube import extract_video_id, try_youtube
 
 
 def test_extract_video_id_variants() -> None:

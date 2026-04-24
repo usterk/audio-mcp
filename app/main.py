@@ -8,9 +8,9 @@ from fastapi import FastAPI
 
 from app.concurrency import ConcurrencyLimits, Semaphores
 from app.config import Settings, get_settings
+from app.http import downloads as downloads_router
 from app.http import health as health_router
 from app.http import landing as landing_router
-from app.http import downloads as downloads_router
 from app.http import upload as upload_router
 from app.mcp_server import create_mcp
 from app.storage.jobs_db import JobsDB

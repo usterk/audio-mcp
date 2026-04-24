@@ -1,7 +1,6 @@
 """Integration test for the transcribe MCP tool (Phase 8)."""
 from __future__ import annotations
 
-import asyncio
 import io
 import json
 from pathlib import Path
