@@ -11,6 +11,13 @@ _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 
+# Normalise platform-variant MIME types to canonical values.
+_CANONICAL_MIME = {
+    "audio/x-wav": "audio/wav",
+    "audio/x-m4a": "audio/mp4",
+    "audio/mp3": "audio/mpeg",
+}
+
 
 async def try_upload_ref(source: str, *, settings: Settings) -> ResolvedSource | None:
     if not _UUID_RE.match(source.strip()):
@@ -22,7 +29,8 @@ async def try_upload_ref(source: str, *, settings: Settings) -> ResolvedSource |
     if not candidates:
         return None
     path = candidates[0]
-    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    raw_ct = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    content_type = _CANONICAL_MIME.get(raw_ct, raw_ct)
     return ResolvedSource(
         source_type="upload",
         audio_path=path,
