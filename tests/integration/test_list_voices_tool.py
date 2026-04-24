@@ -13,5 +13,5 @@ async def test_list_voices_piper_includes_gosia(client: TestClient) -> None:
 
 @pytest.mark.asyncio
 async def test_unknown_backend_errors(client: TestClient) -> None:
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, Exception), match="does-not-exist|unknown"):  # noqa: B017
         await client.app.state.mcp.call_tool("list_voices", {"backend": "does-not-exist"})
