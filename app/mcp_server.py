@@ -4,7 +4,11 @@ from __future__ import annotations
 from fastmcp import FastMCP
 
 from app.tools import generate_audio as generate_audio_tool
+from app.tools import list_recent_jobs as list_recent_jobs_tool
+from app.tools import list_voices as list_voices_tool
+from app.tools import resources as resources_tool
 from app.tools import transcribe as transcribe_tool
+from app.tools import usage_guide as usage_guide_tool
 
 INSTRUCTIONS = """\
 audio-mcp — remote MCP server for audio transcription and text-to-speech.
@@ -41,4 +45,8 @@ def create_mcp() -> FastMCP:
     mcp = FastMCP(name="audio-mcp", instructions=INSTRUCTIONS)
     transcribe_tool.register(mcp)
     generate_audio_tool.register(mcp)
+    list_voices_tool.register(mcp)
+    list_recent_jobs_tool.register(mcp)
+    usage_guide_tool.register(mcp)
+    resources_tool.register(mcp)
     return mcp
