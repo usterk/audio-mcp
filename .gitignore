@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# uv
+.uv-cache/
+
+# Environment / secrets
+.env
+.env.local
+*.pem
+*.key
+gcp-credentials.json
+credentials.json
+
+# Runtime data
+data/
+transcriptions/
+uploads/
+outputs/
+*.db
+*.db-journal
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+test_results*.json
+coverage_*.json
+.ci-failed
+pr-comment.md
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Models (downloaded at build time)
+models/
+*.onnx
+*.onnx.json
