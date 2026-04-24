@@ -7,6 +7,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_http_request
 
 from app.backends import get_tts_backend
+from app.logging_setup import get_logger
 from app.preprocessing import normalize_text
 from app.progress import ProgressReporter
 from app.storage.files import output_path
@@ -71,6 +72,7 @@ def register(mcp: FastMCP) -> None:
                 "format": format,
             },
         )
+        get_logger(__name__).info("job_start", uuid=uuid, kind="generate_audio", backend=backend)
 
         tts = get_tts_backend(backend, settings)
         effective_mode = normalize
@@ -109,8 +111,10 @@ def register(mcp: FastMCP) -> None:
                 "normalized_text": normalized,
             }
             await jobs_db.mark_done(uuid, result=response)
+            get_logger(__name__).info("job_done", uuid=uuid)
             await reporter.report(3, 3, "done")
             return response
         except Exception as exc:
+            get_logger(__name__).info("job_failed", uuid=uuid, error=str(exc))
             await jobs_db.mark_failed(uuid, error=str(exc))
             raise

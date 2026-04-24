@@ -10,6 +10,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_http_request
 
 from app.backends import get_transcription_backend
+from app.logging_setup import get_logger
 from app.progress import ProgressReporter
 from app.resolver import resolve_source
 from app.storage.files import output_path
@@ -69,6 +70,7 @@ def register(mcp: FastMCP) -> None:
             backend=backend,
             params={"source": source, "language": language, "model": model},
         )
+        get_logger(__name__).info("job_start", uuid=uuid, kind="transcribe", backend=backend)
         sem_backend = "faster_whisper" if backend == "local" else "groq"
 
         try:
@@ -136,8 +138,10 @@ def register(mcp: FastMCP) -> None:
                 "preview": (transcription.get("text") or "")[:500],
             }
             await jobs_db.mark_done(uuid, result=result_payload)
+            get_logger(__name__).info("job_done", uuid=uuid)
             return result_payload
         except Exception as exc:
+            get_logger(__name__).info("job_failed", uuid=uuid, error=str(exc))
             await jobs_db.mark_failed(uuid, error=str(exc))
             raise
 
