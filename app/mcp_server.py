@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 
+from app.tools import generate_audio as generate_audio_tool
 from app.tools import transcribe as transcribe_tool
 
 INSTRUCTIONS = """\
@@ -39,4 +40,5 @@ authentication is required within the tailnet.
 def create_mcp() -> FastMCP:
     mcp = FastMCP(name="audio-mcp", instructions=INSTRUCTIONS)
     transcribe_tool.register(mcp)
+    generate_audio_tool.register(mcp)
     return mcp
