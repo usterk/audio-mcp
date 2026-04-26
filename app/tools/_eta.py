@@ -2,6 +2,8 @@
 status-payload fields the MCP tools surface to agents."""
 from __future__ import annotations
 
+import contextlib
+import json
 import math
 import time
 from typing import Any
@@ -110,11 +112,8 @@ def status_payload(
         "error": job_row.get("error"),
     }
     if status == "done" and job_row.get("result_json"):
-        import json
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             payload["result"] = json.loads(job_row["result_json"])
-        except (TypeError, ValueError):
-            pass
     return payload
 
 

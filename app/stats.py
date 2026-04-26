@@ -119,7 +119,7 @@ class RollingStats:
             }
         return out
 
-    async def prime_from_db(self, jobs_db: "JobsDB") -> None:
+    async def prime_from_db(self, jobs_db: JobsDB) -> None:
         """Replay recent done jobs into the in-memory window.
 
         Walks the most recent done jobs per distinct (kind, backend, model_key)

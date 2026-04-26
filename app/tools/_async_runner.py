@@ -55,5 +55,5 @@ async def run_with_soft_cap(
     try:
         result = await asyncio.wait_for(asyncio.shield(task), timeout=wait_max_sec)
         return result, False
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return await on_timeout(), True

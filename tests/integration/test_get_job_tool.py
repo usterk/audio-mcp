@@ -92,5 +92,7 @@ async def test_get_job_running_job_has_eta(client, monkeypatch):
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_get_job_unknown_uuid_raises(client):
-    with pytest.raises(Exception):
+    from fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError, match="Unknown job UUID"):
         await _call_get_job(client, "nope")
