@@ -18,7 +18,7 @@ def test_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert s.inline_base64_max_bytes == 10 * 1024 * 1024
     assert s.upload_ttl_seconds == 86_400
     assert s.global_concurrency == 5
-    assert s.cpu_backend_concurrency == 2
+    assert s.cpu_backend_concurrency == 1
     assert s.host == "0.0.0.0"
     assert s.port == 8000
     assert s.public_base_url == ""  # derived at runtime if empty

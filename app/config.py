@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     inline_base64_max_bytes: int = Field(default=10 * 1024 * 1024, validation_alias="AUDIO_MCP_INLINE_B64_MAX_BYTES")
     upload_ttl_seconds: int = Field(default=86_400, validation_alias="AUDIO_MCP_UPLOAD_TTL_SECONDS")
     global_concurrency: int = Field(default=5, validation_alias="AUDIO_MCP_GLOBAL_CONCURRENCY")
-    cpu_backend_concurrency: int = Field(default=2, validation_alias="AUDIO_MCP_CPU_CONCURRENCY")
+    cpu_backend_concurrency: int = Field(default=1, validation_alias="AUDIO_MCP_CPU_CONCURRENCY")
     host: str = Field(default="0.0.0.0", validation_alias="AUDIO_MCP_HOST")
     port: int = Field(default=8000, validation_alias="AUDIO_MCP_PORT")
     public_base_url: str = Field(default="", validation_alias="AUDIO_MCP_PUBLIC_BASE_URL")
