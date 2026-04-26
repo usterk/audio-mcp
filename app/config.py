@@ -35,6 +35,9 @@ class Settings(BaseSettings):
 
     enable_metrics: bool = Field(default=False, validation_alias="AUDIO_MCP_ENABLE_METRICS")
 
+    default_wait_max_sec: int = Field(default=50, validation_alias="AUDIO_MCP_DEFAULT_WAIT_MAX_SEC")
+    stats_window: int = Field(default=20, validation_alias="AUDIO_MCP_STATS_WINDOW")
+
     def ensure_dirs(self) -> None:
         (self.data_dir / "uploads").mkdir(parents=True, exist_ok=True)
         (self.data_dir / "outputs").mkdir(parents=True, exist_ok=True)

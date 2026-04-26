@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastmcp import FastMCP
 
 from app.tools import generate_audio as generate_audio_tool
+from app.tools import get_job as get_job_tool
 from app.tools import list_recent_jobs as list_recent_jobs_tool
 from app.tools import list_voices as list_voices_tool
 from app.tools import resources as resources_tool
@@ -14,19 +15,26 @@ INSTRUCTIONS = """\
 audio-mcp — remote MCP server for audio transcription and text-to-speech.
 
 Tools:
-- transcribe(source, backend='groq', language='', model='')
+- transcribe(source, backend='groq', language='', model='', wait_max_sec=None)
   source may be: a YouTube URL, an HTTP(S) URL to an audio file,
   an inline "data:audio/...;base64,..." payload (<= 10 MB), or a UUID
   returned by POST /upload. For larger files, first POST the bytes to
   `{base_url}/upload`, then call `transcribe` with source = upload_id.
-- generate_audio(text, backend='piper', voice='', normalize='basic', ...)
+- generate_audio(text, backend='piper', voice='', normalize='basic', wait_max_sec=None, ...)
   Produces an MP3 by default; see list_voices(backend) for per-backend
   voice catalogues. Polish text is normalized with a rule-based
   preprocessor (URLs stripped, acronyms respelled) unless normalize='none'.
 
+Soft cap (wait_max_sec, default 50 s): if the server predicts the job
+will take longer than this budget, it returns immediately with status
+`queued`/`running`, the job UUID, an `eta_remaining_sec`, and a
+`check_after_sec` hint. Poll `get_job(uuid)` after that delay to fetch
+the final result.
+
 Helper tools:
+- get_job(uuid) — current status, ETA, and download URLs for a single job.
 - list_voices(backend) — enumerates voices for a backend.
-- list_recent_jobs(limit=10) — recovers results from recent sessions.
+- list_recent_jobs(limit=10) — overview of recent jobs with ETA fields.
 - usage_guide() — returns the full markdown guide (same content as the
   `audio-mcp://docs/usage` resource).
 
@@ -47,6 +55,7 @@ def create_mcp() -> FastMCP:
     generate_audio_tool.register(mcp)
     list_voices_tool.register(mcp)
     list_recent_jobs_tool.register(mcp)
+    get_job_tool.register(mcp)
     usage_guide_tool.register(mcp)
     resources_tool.register(mcp)
     return mcp
