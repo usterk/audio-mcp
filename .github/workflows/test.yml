@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   unit-integration:
@@ -17,51 +16,46 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - uses: astral-sh/setup-uv@v3
-      - name: Cache apt
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/apt/archives
-          key: apt-audio-${{ runner.os }}
+
+      - name: Install Python deps
+        run: uv sync --frozen
+
       - name: System dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libmagic1
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends ffmpeg
           curl -fsSL https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_x86_64.tar.gz -o /tmp/piper.tar.gz
           sudo tar -xzf /tmp/piper.tar.gz -C /opt
           sudo ln -sf /opt/piper/piper /usr/local/bin/piper
-      - name: Install Python deps
-        run: uv sync --frozen
-      - name: Cache model downloads
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/huggingface
-            ./models
-          key: models-piper-gosia-faster-whisper-tiny
-      - name: Pre-download models
+
+      - name: Pre-download faster-whisper model
+        run: uv run python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+
+      - name: Pre-download piper voice
         env:
           PIPER_VOICE_DIR: ${{ github.workspace }}/models/piper
         run: |
           mkdir -p "$PIPER_VOICE_DIR"
           bash scripts/download_piper_voice.sh gosia-medium
-          uv run python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+
       - name: Ruff
         run: uv run ruff check .
-      - name: Tests with coverage (gate: 80%)
+
+      - name: Tests with coverage
         run: |
           uv run pytest tests/ \
             --cov=app --cov-report=xml --cov-report=term-missing \
-            --cov-fail-under=80 \
-            --json-report --json-report-file=test_results.json
+            --cov-fail-under=80
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
-          path: |
-            test_results.json
-            coverage.xml
-          retention-days: 30
+          name: coverage
+          path: coverage.xml
+          retention-days: 14
