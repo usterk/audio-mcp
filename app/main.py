@@ -33,16 +33,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.started_at = time.time()
             app.state.settings = settings
             app.state.mcp = mcp
-            app.state.jobs_db = JobsDB(settings.data_dir / "jobs.db")
-            await app.state.jobs_db.init()
-            app.state.semaphores = Semaphores(
+            jobs_db = JobsDB(settings.data_dir / "jobs.db")
+            await jobs_db.init()
+            app.state.jobs_db = jobs_db
+            semaphores = Semaphores(
                 ConcurrencyLimits(
                     global_=settings.global_concurrency,
                     cpu=settings.cpu_backend_concurrency,
                 )
             )
+            app.state.semaphores = semaphores
             app.state.active_jobs = 0
-            app.state.backends_loaded = []
+            backends_loaded: list[str] = []
+            app.state.backends_loaded = backends_loaded
+
+            # request.app inside the /mcp sub-app resolves to mcp_app, not the root
+            # FastAPI app, so tools reading request.app.state need these attributes here.
+            mcp_app.state.settings = settings
+            mcp_app.state.jobs_db = jobs_db
+            mcp_app.state.semaphores = semaphores
+            mcp_app.state.active_jobs = 0
+            mcp_app.state.backends_loaded = backends_loaded
 
             scheduler = AsyncIOScheduler()
 
