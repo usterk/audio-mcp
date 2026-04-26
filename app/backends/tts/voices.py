@@ -59,10 +59,22 @@ OPENAI: list[VoiceInfo] = [
     {"id": "shimmer", "name": "Shimmer", "language": "en", "gender": "female", "tags": ["cloud", "style"]},
 ]
 
+GEMINI: list[VoiceInfo] = [
+    {"id": "Charon", "name": "Charon", "language": "mul", "gender": "male",   "tags": ["cloud", "cheap"]},
+    {"id": "Kore",   "name": "Kore",   "language": "mul", "gender": "female", "tags": ["cloud", "cheap"]},
+    {"id": "Puck",   "name": "Puck",   "language": "mul", "gender": "male",   "tags": ["cloud", "cheap"]},
+    {"id": "Aoede",  "name": "Aoede",  "language": "mul", "gender": "female", "tags": ["cloud", "cheap"]},
+    {"id": "Fenrir", "name": "Fenrir", "language": "mul", "gender": "male",   "tags": ["cloud", "cheap"]},
+    {"id": "Leda",   "name": "Leda",   "language": "mul", "gender": "female", "tags": ["cloud", "cheap"]},
+    {"id": "Orus",   "name": "Orus",   "language": "mul", "gender": "male",   "tags": ["cloud", "cheap"]},
+    {"id": "Zephyr", "name": "Zephyr", "language": "mul", "gender": "female", "tags": ["cloud", "cheap"]},
+]
+
 
 def for_backend(backend: str) -> list[VoiceInfo]:
     return {
         "piper": PIPER,
         "gcloud": GCLOUD,
         "openai": OPENAI,
+        "gemini": GEMINI,
     }.get(backend, [])

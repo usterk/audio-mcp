@@ -12,7 +12,7 @@ from app.preprocessing import normalize_text
 from app.progress import ProgressReporter
 from app.storage.files import output_path
 
-VALID_BACKENDS = ("piper", "gcloud", "openai")
+VALID_BACKENDS = ("piper", "gcloud", "openai", "gemini")
 VALID_FORMATS = ("mp3", "wav", "opus")
 VALID_NORMALIZE = ("basic", "none")
 

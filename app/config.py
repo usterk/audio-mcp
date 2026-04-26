@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     groq_api_key: str = Field(default="", validation_alias="GROQ_API_KEY")
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
     google_application_credentials: str = Field(default="", validation_alias="GOOGLE_APPLICATION_CREDENTIALS")
 
     piper_voice_dir: Path = Field(default=Path("/app/models/piper"), validation_alias="AUDIO_MCP_PIPER_VOICE_DIR")

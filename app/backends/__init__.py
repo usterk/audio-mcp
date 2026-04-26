@@ -6,6 +6,7 @@ from functools import cache
 from app.backends.transcription.faster_whisper import FasterWhisperBackend
 from app.backends.transcription.groq import GroqBackend
 from app.backends.tts.gcloud import GCloudBackend
+from app.backends.tts.gemini import GeminiBackend
 from app.backends.tts.openai import OpenAIBackend
 from app.backends.tts.piper import PiperBackend
 from app.config import Settings
@@ -39,4 +40,8 @@ def get_tts_backend(name: str, settings: Settings):
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY not set; cannot use the openai TTS backend")
         return OpenAIBackend(api_key=settings.openai_api_key)
+    if name == "gemini":
+        if not settings.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY not set; cannot use the gemini TTS backend")
+        return GeminiBackend(api_key=settings.gemini_api_key)
     raise ValueError(f"unknown TTS backend: {name!r}")
