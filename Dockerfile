@@ -18,8 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Piper binary
-ARG PIPER_VERSION=1.2.0
-RUN curl -fsSL "https://github.com/rhasspy/piper/releases/download/v${PIPER_VERSION}/piper_linux_x86_64.tar.gz" \
+ARG PIPER_VERSION=2023.11.14-2
+RUN curl -fsSL "https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/piper_linux_x86_64.tar.gz" \
     | tar -xz -C /opt \
     && ln -s /opt/piper/piper /usr/local/bin/piper
 
