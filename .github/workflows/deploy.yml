@@ -48,7 +48,7 @@ jobs:
       - id: meta
         run: |
           TAG="${{ inputs.version }}"
-          if [ -z "$TAG" ]; then TAG="v${{ steps.version.outputs.version }}"; fi
+          if [ -z "$TAG" ]; then TAG="v$(python3 scripts/version.py | tr '+' '-')"; fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
       - uses: docker/build-push-action@v6
         with:
