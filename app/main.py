@@ -114,7 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "shutdown_in_flight_tasks", count=len(in_flight)
                     )
 
-    app = FastAPI(title="audio-mcp", lifespan=lifespan)
+    app = FastAPI(title="audio-mcp", lifespan=lifespan, redirect_slashes=False)
     app.include_router(health_router.router)
     app.include_router(landing_router.router)
     app.include_router(upload_router.router)
