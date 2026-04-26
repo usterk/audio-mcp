@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -33,19 +32,70 @@ async def test_non_youtube_returns_none(tmp_path: Path) -> None:
     assert resolved is None
 
 
+class _FakeSnippet:
+    """Minimal stand-in for youtube_transcript_api.FetchedTranscriptSnippet."""
+
+    def __init__(self, text: str, start: float, duration: float) -> None:
+        self.text = text
+        self.start = start
+        self.duration = duration
+
+
+class _FakeFetched(list):
+    """Iterable like FetchedTranscript with a .language_code attr."""
+
+    def __init__(self, items: list[_FakeSnippet], language_code: str = "pl") -> None:
+        super().__init__(items)
+        self.language_code = language_code
+
+
 @pytest.mark.asyncio
 async def test_fast_path_uses_transcript_api(tmp_path: Path) -> None:
-    fake_transcript = [
-        {"text": "hello", "start": 0.0, "duration": 1.0},
-        {"text": "world", "start": 1.0, "duration": 1.0},
-    ]
+    fake_fetched = _FakeFetched(
+        [_FakeSnippet("hello", 0.0, 1.0), _FakeSnippet("world", 1.0, 1.0)],
+        language_code="pl",
+    )
 
-    class FakeApi:
-        @staticmethod
-        def get_transcript(video_id: str, languages: list[str] | None = None) -> list[dict[str, Any]]:
-            return fake_transcript
+    class FakeApiInstance:
+        def fetch(self, video_id: str, languages=None, preserve_formatting: bool = False):
+            return fake_fetched
 
-    with patch("app.resolver.youtube.YouTubeTranscriptApi", FakeApi):
+        def list(self, video_id: str):
+            return iter([])
+
+    with patch("app.resolver.youtube.YouTubeTranscriptApi", return_value=FakeApiInstance()):
+        resolved = await try_youtube(
+            "https://youtu.be/dQw4w9WgXcQ",
+            work_dir=tmp_path,
+            prefer_audio=False,
+            languages=["pl"],
+        )
+    assert resolved is not None
+    assert resolved.source_type == "youtube_transcript"
+    assert resolved.transcript_data is not None
+    assert resolved.transcript_data["segments"][0]["text"] == "hello"
+    assert resolved.transcript_data["language"] == "pl"
+    assert resolved.transcript_data["duration"] == pytest.approx(2.0)
+
+
+@pytest.mark.asyncio
+async def test_fast_path_no_languages_picks_first_available(tmp_path: Path) -> None:
+    fake_fetched = _FakeFetched(
+        [_FakeSnippet("auto", 0.0, 1.5)], language_code="en"
+    )
+
+    class FakeTranscriptEntry:
+        def fetch(self):
+            return fake_fetched
+
+    class FakeApiInstance:
+        def fetch(self, video_id: str, languages=None, preserve_formatting: bool = False):
+            raise RuntimeError("requires languages")
+
+        def list(self, video_id: str):
+            return iter([FakeTranscriptEntry()])
+
+    with patch("app.resolver.youtube.YouTubeTranscriptApi", return_value=FakeApiInstance()):
         resolved = await try_youtube(
             "https://youtu.be/dQw4w9WgXcQ",
             work_dir=tmp_path,
@@ -54,15 +104,16 @@ async def test_fast_path_uses_transcript_api(tmp_path: Path) -> None:
         )
     assert resolved is not None
     assert resolved.source_type == "youtube_transcript"
-    assert resolved.transcript_data is not None
-    assert resolved.transcript_data["segments"][0]["text"] == "hello"
+    assert resolved.transcript_data["language"] == "en"
 
 
 @pytest.mark.asyncio
 async def test_audio_fallback_when_transcripts_unavailable(tmp_path: Path) -> None:
-    class FakeApi:
-        @staticmethod
-        def get_transcript(video_id: str, languages: list[str] | None = None) -> list[dict[str, Any]]:
+    class FakeApiInstance:
+        def fetch(self, video_id: str, languages=None, preserve_formatting: bool = False):
+            raise RuntimeError("no transcripts")
+
+        def list(self, video_id: str):
             raise RuntimeError("no transcripts")
 
     def fake_download(url: str, out_dir: Path) -> Path:
@@ -70,7 +121,7 @@ async def test_audio_fallback_when_transcripts_unavailable(tmp_path: Path) -> No
         p.write_bytes(b"audio")
         return p
 
-    with patch("app.resolver.youtube.YouTubeTranscriptApi", FakeApi), patch(
+    with patch("app.resolver.youtube.YouTubeTranscriptApi", return_value=FakeApiInstance()), patch(
         "app.resolver.youtube._download_audio", side_effect=fake_download
     ):
         resolved = await try_youtube(

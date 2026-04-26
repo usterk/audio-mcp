@@ -32,7 +32,7 @@ def extract_video_id(url: str) -> str | None:
     return None
 
 
-def _segments_from_transcript(raw: list[dict]) -> dict:
+def _segments_from_transcript(raw: list[dict], language: str = "") -> dict:
     segments = []
     full_text = []
     duration = 0.0
@@ -50,8 +50,40 @@ def _segments_from_transcript(raw: list[dict]) -> dict:
         "segments": segments,
         "text": " ".join(full_text),
         "duration": duration,
-        "language": "",
+        "language": language,
     }
+
+
+def _snippets_to_dicts(fetched) -> list[dict]:
+    """Adapt FetchedTranscriptSnippet objects (or legacy dicts) to plain dicts."""
+    out: list[dict] = []
+    for s in fetched:
+        if isinstance(s, dict):
+            out.append({"start": s["start"], "duration": s["duration"], "text": s["text"]})
+        else:
+            out.append({"start": s.start, "duration": s.duration, "text": s.text})
+    return out
+
+
+def _fetch_transcript_sync(vid: str, languages: list[str] | None):
+    """Synchronous transcript fetch using the v2 youtube-transcript-api.
+
+    Returns a tuple ``(snippets, language_code)`` or ``None`` on any failure.
+    """
+    api = YouTubeTranscriptApi()
+    try:
+        if languages:
+            fetched = api.fetch(vid, languages=list(languages))
+        else:
+            listing = api.list(vid)
+            chosen = next(iter(listing), None)
+            if chosen is None:
+                return None
+            fetched = chosen.fetch()
+    except Exception:
+        return None
+    language_code = getattr(fetched, "language_code", "")
+    return _snippets_to_dicts(fetched), language_code
 
 
 def _download_audio(url: str, out_dir: Path) -> Path:
@@ -91,17 +123,13 @@ async def try_youtube(
         return None
 
     if not prefer_audio:
-        try:
-            raw = await asyncio.to_thread(
-                YouTubeTranscriptApi.get_transcript, vid, languages=languages
-            )
-        except Exception:
-            raw = None
-        if raw:
+        result = await asyncio.to_thread(_fetch_transcript_sync, vid, languages)
+        if result is not None:
+            raw, language_code = result
             return ResolvedSource(
                 source_type="youtube_transcript",
                 audio_path=None,
-                transcript_data=_segments_from_transcript(raw),
+                transcript_data=_segments_from_transcript(raw, language=language_code),
             )
 
     path = await asyncio.to_thread(_download_audio, source, work_dir)
