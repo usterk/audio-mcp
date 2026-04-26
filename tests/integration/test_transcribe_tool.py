@@ -126,3 +126,61 @@ async def test_transcribe_tool_end_to_end(
     meta = client.get(f"/jobs/{job_uuid}").json()
     assert meta["status"] == "done"
     assert meta["uuid"] == job_uuid
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_transcribe_returns_queued_when_prediction_exceeds_budget(
+    client: TestClient,
+) -> None:
+    """When predicted RTF makes the call run past wait_max_sec, return queued."""
+    import asyncio
+
+    # Upload a dummy file so the resolver succeeds without network access.
+    r = client.post(
+        "/upload",
+        files={"file": ("t.wav", io.BytesIO(b"RIFFxxxxWAVEfmt "), "audio/wav")},
+    )
+    upload_id = r.json()["upload_id"]
+
+    # Prime stats so a 600s default audio predicts well over the 1s budget.
+    # Record a sample with a very high RTF.
+    client.app.state.stats.record(
+        kind="transcribe", backend="groq", model_key=None,
+        size_proxy=10.0, processing_sec=300.0,  # 30 RTF
+    )
+
+    started = asyncio.Event()
+    can_finish = asyncio.Event()
+
+    async def slow_transcribe(self, audio_path, *, language=None, model=None):
+        started.set()
+        await can_finish.wait()
+        return TranscriptionResult(
+            segments=[], text="", duration=10.0, language="en",
+            backend="groq", model="whisper-large-v3-turbo",
+        )
+
+    from fastmcp.server.http import _current_http_request
+
+    fake_request = _make_fake_request(client.app)
+    token = _current_http_request.set(fake_request)
+    try:
+        with patch(
+            "app.backends.transcription.groq.GroqBackend.transcribe",
+            new=slow_transcribe,
+        ):
+            client.app.state.settings.groq_api_key = "test-key"
+            tool_result = await client.app.state.mcp.call_tool(
+                "transcribe",
+                {"source": upload_id, "backend": "groq", "wait_max_sec": 1},
+            )
+    finally:
+        _current_http_request.reset(token)
+        can_finish.set()  # release background task
+
+    payload = tool_result.structured_content
+    assert payload["was_async"] is True
+    assert payload["status"] in ("queued", "running")
+    assert payload["uuid"]
+    assert payload["check_after_sec"] is not None
