@@ -23,6 +23,25 @@ from app.storage.files import remove_expired_uploads
 from app.storage.jobs_db import JobsDB
 
 
+class _McpTrailingSlash:
+    """Make ``/mcp`` and ``/mcp/`` both reach the mounted FastMCP sub-app.
+
+    FastMCP registers its streamable-HTTP route at ``path="/"`` inside the
+    sub-app. Mounting at ``/mcp`` forwards ``/mcp/`` (scope path ``/``) to the
+    route, but ``/mcp`` (scope path ``""``) doesn't match, so users who
+    register the URL without the trailing slash get 404. We rewrite the
+    scope before routing — no 307 redirect, POST body and SSE stream survive.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "http" and scope.get("path") == "/mcp":
+            scope = {**scope, "path": "/mcp/", "raw_path": b"/mcp/"}
+        await self.app(scope, receive, send)
+
+
 async def _sweep_unfinished_jobs(jobs_db: JobsDB) -> int:
     """Mark any queued/running rows from a previous process as failed.
 
@@ -119,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(landing_router.router)
     app.include_router(upload_router.router)
     app.include_router(downloads_router.router)
+    app.add_middleware(_McpTrailingSlash)
     app.mount("/mcp", mcp_app)
     return app
 
