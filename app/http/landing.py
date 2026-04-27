@@ -14,8 +14,9 @@ _HTML = """<!doctype html>
 <p>Remote MCP server for audio transcription and text-to-speech.</p>
 <p>MCP endpoint: <code>POST /mcp</code></p>
 <p>HTTP helpers: <code>POST /upload</code>, <code>GET /jobs/{uuid}/...</code>, <code>GET /health</code>.</p>
-<p>Read the agent usage guide by calling the <code>usage_guide()</code> tool
-or fetching the <code>audio-mcp://docs/usage</code> resource.</p>
+<p>Agent usage guidance is delivered via the server-level MCP
+<code>instructions</code> field and the <code>description</code> on each tool —
+no separate guide tool to invoke.</p>
 </body></html>
 """
 

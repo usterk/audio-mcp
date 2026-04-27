@@ -9,7 +9,9 @@ from pathlib import Path
 
 from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_http_request
+from groq import APIError, APIStatusError
 
+from app.audio.compress import compress_for_groq
 from app.backends import get_transcription_backend
 from app.logging_setup import get_logger
 from app.progress import ProgressReporter
@@ -58,11 +60,20 @@ def register(mcp: FastMCP) -> None:
         or ``local`` (faster-whisper, CPU). Returns a summary plus URLs for
         the JSON and TXT artefacts in the ``download`` field.
 
+        Long sources are handled automatically: YouTube captions are tried
+        with retry on transient errors, otherwise the audio is downloaded,
+        compressed to opus 16 kHz mono ~24 kbps, and chunked when it would
+        otherwise exceed the cloud request-size limit. If Groq still fails
+        the call falls back to the local CPU backend by default — ``notes``
+        in the response records what happened. Use ``backend='local'``
+        only when you specifically want CPU/off-cloud processing.
+
         ``wait_max_sec`` (default ``settings.default_wait_max_sec`` = 50)
         bounds how long the call may block. If the predicted total time
         exceeds the budget, the response returns immediately with status
         ``queued``/``running``, the job UUID, and ``check_after_sec`` —
-        poll ``get_job(uuid)`` after that many seconds.
+        poll ``get_job(uuid)`` after that many seconds. On final failure,
+        ``error`` is a JSON object with ``stage`` and ``next_steps``.
         """
         if backend not in VALID_BACKENDS:
             raise ValueError(f"backend must be one of {VALID_BACKENDS}")
@@ -127,6 +138,7 @@ def register(mcp: FastMCP) -> None:
         reporter = ProgressReporter(ctx)
 
         async def _do_work() -> dict:
+            notes: list[str] = []
             try:
                 await jobs_db.mark_started(uuid)
                 await job_queue.start(uuid)
@@ -136,10 +148,11 @@ def register(mcp: FastMCP) -> None:
                     try:
                         await reporter.report(1, 5, "resolving source")
                         with tempfile.TemporaryDirectory(prefix="audio_mcp_") as tmp:
+                            tmp_path = Path(tmp)
                             resolved = await resolve_source(
                                 source,
                                 settings=settings,
-                                work_dir=Path(tmp),
+                                work_dir=tmp_path,
                                 prefer_audio=(backend == "local"),
                                 languages=[language] if language else None,
                             )
@@ -169,12 +182,25 @@ def register(mcp: FastMCP) -> None:
                                 transcription.setdefault("backend", "youtube_transcript")
                                 transcription.setdefault("model", "")
                             else:
+                                audio_path = resolved.audio_path
+                                if backend == "groq":
+                                    audio_path = await compress_for_groq(
+                                        audio_path, work_dir=tmp_path
+                                    )
                                 async with reporter.heartbeat(total=5, message="transcribing"):
-                                    tbackend = get_transcription_backend(backend, settings)
-                                    result = await tbackend.transcribe(
-                                        resolved.audio_path,
-                                        language=language or None,
-                                        model=model or None,
+                                    result = await _run_with_groq_fallback(
+                                        backend=backend,
+                                        audio_path=audio_path,
+                                        language=language,
+                                        model=model,
+                                        settings=settings,
+                                        notes=notes,
+                                        log=log,
+                                        stats=stats,
+                                        jobs_db=jobs_db,
+                                        job_queue=job_queue,
+                                        uuid=uuid,
+                                        model_key=model_key,
                                     )
                                 transcription = {
                                     "segments": result.segments,
@@ -233,12 +259,15 @@ def register(mcp: FastMCP) -> None:
                     "size_proxy": audio_sec or None,
                     "model_key": model_key,
                 }
+                if notes:
+                    result_payload["notes"] = list(notes)
                 await jobs_db.mark_done(uuid, result=result_payload)
                 log.info("job_done", uuid=uuid, processing_sec=processing_sec)
                 return result_payload
             except Exception as exc:
-                log.info("job_failed", uuid=uuid, error=str(exc))
-                await jobs_db.mark_failed(uuid, error=str(exc))
+                error_payload = _build_error_payload(exc, notes)
+                log.info("job_failed", uuid=uuid, error=error_payload)
+                await jobs_db.mark_failed(uuid, error=json.dumps(error_payload))
                 raise
             finally:
                 await job_queue.complete(uuid)
@@ -303,3 +332,111 @@ def _summary(transcription: dict, backend: str) -> str:
     parts.append(f"{len(transcription.get('segments', []) or [])} segments")
     parts.append(f"backend={transcription.get('backend') or backend}")
     return ", ".join(parts)
+
+
+async def _run_with_groq_fallback(
+    *,
+    backend: str,
+    audio_path: Path,
+    language: str,
+    model: str,
+    settings,
+    notes: list[str],
+    log,
+    stats,
+    jobs_db,
+    job_queue,
+    uuid: str,
+    model_key: str | None,
+):
+    """Invoke the requested backend; on Groq cloud failures, optionally fall
+    back to local faster-whisper. Returns a TranscriptionResult.
+    """
+    tbackend = get_transcription_backend(backend, settings)
+    try:
+        return await tbackend.transcribe(
+            audio_path,
+            language=language or None,
+            model=model or None,
+        )
+    except (APIStatusError, APIError) as exc:
+        if backend != "groq" or not settings.groq_auto_fallback_local:
+            raise
+        reason = type(exc).__name__
+        status_code = getattr(exc, "status_code", None)
+        log.warning(
+            "groq_failed_falling_back_to_local",
+            uuid=uuid,
+            reason=reason,
+            status_code=status_code,
+        )
+        notes.append(
+            f"groq failed ({reason}"
+            + (f" status={status_code}" if status_code else "")
+            + "): falling back to local faster-whisper"
+        )
+        local_backend = get_transcription_backend("local", settings)
+        try:
+            duration_hint = float(
+                getattr(audio_path.stat(), "st_size", 0)
+            )
+        except OSError:
+            duration_hint = 0.0
+        if duration_hint > 0:
+            refined = stats.predict(
+                kind="transcribe",
+                backend="local",
+                model_key=model_key,
+                size_proxy=duration_hint,
+            )
+            await jobs_db.update_size_proxy(
+                uuid,
+                size_proxy=duration_hint,
+                predicted_processing_sec=refined.seconds,
+            )
+            await job_queue.update_predicted(uuid, refined.seconds)
+        return await local_backend.transcribe(
+            audio_path,
+            language=language or None,
+            model=model or None,
+        )
+
+
+def _stage_for(exc: Exception) -> str:
+    if isinstance(exc, (APIStatusError, APIError)):
+        return "groq_api"
+    if "yt-dlp" in str(exc).lower() or "yt_dlp" in type(exc).__module__:
+        return "yt_dlp"
+    if "ffmpeg" in str(exc).lower():
+        return "ffmpeg"
+    return "transcribe"
+
+
+def _build_error_payload(exc: Exception, notes: list[str]) -> dict:
+    stage = _stage_for(exc)
+    next_steps: list[str] = []
+    if isinstance(exc, (APIStatusError, APIError)):
+        next_steps = [
+            "retry with backend='local' (faster-whisper, slower but unbounded)",
+            "shorten the source (e.g. split into ≤30 min segments)",
+            "verify GROQ_API_KEY and your account quota",
+        ]
+    elif stage == "yt_dlp":
+        next_steps = [
+            "verify the YouTube URL is accessible (not age-restricted / region-locked)",
+            "retry — yt-dlp is occasionally rate-limited by YouTube",
+        ]
+    else:
+        next_steps = [
+            "retry with backend='local'",
+            "inspect server logs for the failing stage",
+        ]
+    payload = {
+        "message": str(exc),
+        "exception": type(exc).__name__,
+        "stage": stage,
+        "next_steps": next_steps,
+    }
+    if notes:
+        payload["notes"] = list(notes)
+    return payload

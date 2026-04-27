@@ -66,6 +66,10 @@ async def test_transcribe_tool_end_to_end(
 
     try:
         with patch(
+            "app.tools.transcribe.compress_for_groq",
+            new_callable=AsyncMock,
+            side_effect=lambda src, work_dir: src,
+        ), patch(
             "app.backends.transcription.groq.GroqBackend.transcribe",
             new_callable=AsyncMock,
             return_value=fake_result,
@@ -167,6 +171,10 @@ async def test_transcribe_returns_queued_when_prediction_exceeds_budget(
     token = _current_http_request.set(fake_request)
     try:
         with patch(
+            "app.tools.transcribe.compress_for_groq",
+            new_callable=AsyncMock,
+            side_effect=lambda src, work_dir: src,
+        ), patch(
             "app.backends.transcription.groq.GroqBackend.transcribe",
             new=slow_transcribe,
         ):

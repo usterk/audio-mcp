@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     default_wait_max_sec: int = Field(default=50, validation_alias="AUDIO_MCP_DEFAULT_WAIT_MAX_SEC")
     stats_window: int = Field(default=20, validation_alias="AUDIO_MCP_STATS_WINDOW")
 
+    groq_max_request_bytes: int = Field(
+        default=24 * 1024 * 1024, validation_alias="AUDIO_MCP_GROQ_MAX_REQUEST_BYTES"
+    )
+    groq_chunk_seconds: int = Field(
+        default=600, validation_alias="AUDIO_MCP_GROQ_CHUNK_SECONDS"
+    )
+    groq_auto_fallback_local: bool = Field(
+        default=True, validation_alias="AUDIO_MCP_GROQ_AUTO_FALLBACK_LOCAL"
+    )
+
     def ensure_dirs(self) -> None:
         (self.data_dir / "uploads").mkdir(parents=True, exist_ok=True)
         (self.data_dir / "outputs").mkdir(parents=True, exist_ok=True)

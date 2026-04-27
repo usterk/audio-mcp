@@ -3,15 +3,28 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore[import-untyped]
+from youtube_transcript_api._errors import (  # type: ignore[import-untyped]
+    CouldNotRetrieveTranscript,
+    NoTranscriptFound,
+    RequestBlocked,
+    TranscriptsDisabled,
+    YouTubeDataUnparsable,
+    YouTubeRequestFailed,
+    YouTubeTranscriptApiException,
+)
 
+from app.logging_setup import get_logger
 from app.resolver.types import ResolvedSource
 
 _HOSTS = {"youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com"}
 _SHORTS_RE = re.compile(r"/shorts/([A-Za-z0-9_-]{6,})")
+_TRANSIENT_TRANSCRIPT_EXC = (RequestBlocked, YouTubeRequestFailed, YouTubeDataUnparsable)
+_RETRY_BACKOFF_SEC = (1.0, 3.0)
 
 
 def extract_video_id(url: str) -> str | None:
@@ -65,29 +78,85 @@ def _snippets_to_dicts(fetched) -> list[dict]:
     return out
 
 
-def _fetch_transcript_sync(vid: str, languages: list[str] | None):
-    """Synchronous transcript fetch using the v2 youtube-transcript-api.
-
-    Returns a tuple ``(snippets, language_code)`` or ``None`` on any failure.
-    """
-    api = YouTubeTranscriptApi()
-    try:
-        if languages:
-            fetched = api.fetch(vid, languages=list(languages))
-        else:
-            listing = api.list(vid)
-            chosen = next(iter(listing), None)
-            if chosen is None:
-                return None
-            fetched = chosen.fetch()
-    except Exception:
-        return None
+def _fetch_transcript_once(api, vid: str, languages: list[str] | None):
+    if languages:
+        fetched = api.fetch(vid, languages=list(languages))
+    else:
+        listing = api.list(vid)
+        chosen = next(iter(listing), None)
+        if chosen is None:
+            return None
+        fetched = chosen.fetch()
     language_code = getattr(fetched, "language_code", "")
     return _snippets_to_dicts(fetched), language_code
 
 
+def _fetch_transcript_sync(vid: str, languages: list[str] | None):
+    """Synchronous transcript fetch with retry on transient errors.
+
+    Returns ``(snippets, language_code)`` on success or ``None`` after all
+    retries / on a permanent failure. Logs *why* each attempt failed so
+    flaky paths (rate limit, IP block, request failure) are visible in
+    container logs instead of getting swallowed.
+    """
+    log = get_logger(__name__)
+    api = YouTubeTranscriptApi()
+    attempts = len(_RETRY_BACKOFF_SEC) + 1
+    for attempt in range(attempts):
+        try:
+            return _fetch_transcript_once(api, vid, languages)
+        except (NoTranscriptFound, TranscriptsDisabled) as exc:
+            log.warning(
+                "youtube_transcript_unavailable",
+                vid=vid,
+                reason=type(exc).__name__,
+                detail=str(exc).splitlines()[0] if str(exc) else "",
+            )
+            return None
+        except _TRANSIENT_TRANSCRIPT_EXC as exc:
+            if attempt >= attempts - 1:
+                log.warning(
+                    "youtube_transcript_giving_up",
+                    vid=vid,
+                    reason=type(exc).__name__,
+                    attempts=attempts,
+                )
+                return None
+            backoff = _RETRY_BACKOFF_SEC[attempt]
+            log.warning(
+                "youtube_transcript_transient_retry",
+                vid=vid,
+                reason=type(exc).__name__,
+                attempt=attempt + 1,
+                backoff_sec=backoff,
+            )
+            time.sleep(backoff)
+        except (CouldNotRetrieveTranscript, YouTubeTranscriptApiException) as exc:
+            log.warning(
+                "youtube_transcript_failed",
+                vid=vid,
+                reason=type(exc).__name__,
+                detail=str(exc).splitlines()[0] if str(exc) else "",
+            )
+            return None
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "youtube_transcript_unexpected_error",
+                vid=vid,
+                reason=type(exc).__name__,
+                detail=str(exc).splitlines()[0] if str(exc) else "",
+            )
+            return None
+    return None
+
+
 def _download_audio(url: str, out_dir: Path) -> Path:
-    """yt-dlp wrapper, synchronous; call via asyncio.to_thread."""
+    """yt-dlp wrapper, synchronous; call via asyncio.to_thread.
+
+    Prefers audio-only formats that are already small enough to clear cloud
+    request-size limits (so we frequently skip the re-encode step entirely).
+    Falls back to the smallest viable audio if no slim variant exists.
+    """
     import subprocess
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -96,7 +165,7 @@ def _download_audio(url: str, out_dir: Path) -> Path:
         [
             "yt-dlp",
             "-f",
-            "bestaudio[ext=m4a]/bestaudio",
+            "bestaudio[filesize<24M]/bestaudio[abr<=64]/bestaudio",
             "-o",
             template,
             "--no-playlist",

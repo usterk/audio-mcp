@@ -1,4 +1,4 @@
-"""Smoke test: in-process MCP client discovers all tools + resource."""
+"""Smoke test: in-process MCP client discovers all tools and instructions."""
 from __future__ import annotations
 
 import pytest
@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_tools_and_resources_registered(client: TestClient) -> None:
+async def test_tools_and_instructions_registered(client: TestClient) -> None:
     mcp = client.app.state.mcp
     tool_names = {t.name for t in await mcp.list_tools()}
     assert {
@@ -15,10 +15,12 @@ async def test_tools_and_resources_registered(client: TestClient) -> None:
         "generate_audio",
         "list_voices",
         "list_recent_jobs",
-        "usage_guide",
+        "get_job",
     } <= tool_names
-    resources = await mcp.list_resources()
-    assert any(str(r.uri) == "audio-mcp://docs/usage" for r in resources)
+    # The usage-guide tool/resource has been retired; long-audio guidance
+    # lives in the server-level instructions and tool descriptions instead.
+    assert "usage_guide" not in tool_names
     instructions = mcp.instructions
     assert "transcribe" in instructions
     assert "generate_audio" in instructions
+    assert "Long audio is handled automatically" in instructions

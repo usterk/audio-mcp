@@ -21,7 +21,7 @@ def get_transcription_backend(name: str, settings: Settings):
     if name == "groq":
         if not settings.groq_api_key:
             raise ValueError("GROQ_API_KEY is not configured")
-        return GroqBackend(api_key=settings.groq_api_key)
+        return GroqBackend(api_key=settings.groq_api_key, settings=settings)
     if name == "local":
         return _faster_whisper()
     raise ValueError(f"unknown transcription backend: {name!r}")

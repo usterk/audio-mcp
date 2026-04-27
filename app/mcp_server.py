@@ -7,9 +7,7 @@ from app.tools import generate_audio as generate_audio_tool
 from app.tools import get_job as get_job_tool
 from app.tools import list_recent_jobs as list_recent_jobs_tool
 from app.tools import list_voices as list_voices_tool
-from app.tools import resources as resources_tool
 from app.tools import transcribe as transcribe_tool
-from app.tools import usage_guide as usage_guide_tool
 
 INSTRUCTIONS = """\
 audio-mcp — remote MCP server for audio transcription and text-to-speech.
@@ -31,12 +29,22 @@ will take longer than this budget, it returns immediately with status
 `check_after_sec` hint. Poll `get_job(uuid)` after that delay to fetch
 the final result.
 
+Long audio is handled automatically — do NOT pre-process it yourself.
+For YouTube the server tries captions first (with retry on transient
+errors), otherwise downloads the audio, re-encodes it to opus 16 kHz
+mono ~24 kbps, and chunks it when it would exceed the cloud request-
+size limit. If Groq still rejects the request, the call falls back to
+the local CPU backend by default; ``notes`` in the response records
+what happened. Use ``backend='local'`` only when you specifically want
+CPU/off-cloud processing.
+
+On failure the ``error`` field is a JSON object with ``message``,
+``stage``, and ``next_steps`` — read those before retrying.
+
 Helper tools:
 - get_job(uuid) — current status, ETA, and download URLs for a single job.
 - list_voices(backend) — enumerates voices for a backend.
 - list_recent_jobs(limit=10) — overview of recent jobs with ETA fields.
-- usage_guide() — returns the full markdown guide (same content as the
-  `audio-mcp://docs/usage` resource).
 
 Companion HTTP API:
 - POST /upload (multipart/form-data field 'file') → { upload_id }.
@@ -56,6 +64,4 @@ def create_mcp() -> FastMCP:
     list_voices_tool.register(mcp)
     list_recent_jobs_tool.register(mcp)
     get_job_tool.register(mcp)
-    usage_guide_tool.register(mcp)
-    resources_tool.register(mcp)
     return mcp

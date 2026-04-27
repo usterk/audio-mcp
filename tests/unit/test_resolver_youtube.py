@@ -5,8 +5,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from youtube_transcript_api._errors import (
+    NoTranscriptFound,
+    RequestBlocked,
+    TranscriptsDisabled,
+    YouTubeRequestFailed,
+)
 
+from app.resolver import youtube as yt_resolver
 from app.resolver.youtube import extract_video_id, try_youtube
+
+
+@pytest.fixture(autouse=True)
+def _no_backoff(monkeypatch):
+    """Skip real sleeps in retry path so the test suite stays fast."""
+    monkeypatch.setattr(yt_resolver, "_RETRY_BACKOFF_SEC", (0.0, 0.0))
 
 
 def test_extract_video_id_variants() -> None:
@@ -153,3 +166,143 @@ async def test_prefer_audio_skips_transcript_fast_path(tmp_path: Path) -> None:
     assert dl.called
     assert resolved is not None
     assert resolved.source_type == "youtube_audio"
+
+
+def _exc(cls):
+    """Build an exception of ``cls`` filling its constructor as needed."""
+    if cls is NoTranscriptFound:
+        return cls("vid", ["pl"], None)
+    if cls is YouTubeRequestFailed:
+        import requests
+        return cls("vid", requests.exceptions.HTTPError("boom"))
+    return cls("vid")
+
+
+@pytest.mark.asyncio
+async def test_no_transcript_found_falls_back_without_retry(tmp_path: Path) -> None:
+    call_count = {"n": 0}
+
+    class FakeApiInstance:
+        def fetch(self, video_id, languages=None, preserve_formatting=False):
+            call_count["n"] += 1
+            raise _exc(NoTranscriptFound)
+
+        def list(self, video_id):
+            call_count["n"] += 1
+            raise _exc(NoTranscriptFound)
+
+    def fake_download(url: str, out_dir: Path) -> Path:
+        p = out_dir / "audio.m4a"
+        p.write_bytes(b"audio")
+        return p
+
+    with patch(
+        "app.resolver.youtube.YouTubeTranscriptApi", return_value=FakeApiInstance()
+    ), patch("app.resolver.youtube._download_audio", side_effect=fake_download):
+        resolved = await try_youtube(
+            "https://youtu.be/dQw4w9WgXcQ",
+            work_dir=tmp_path,
+            prefer_audio=False,
+            languages=["pl"],
+        )
+    # Permanent error → no retries, exactly one fetch attempt.
+    assert call_count["n"] == 1
+    assert resolved is not None
+    assert resolved.source_type == "youtube_audio"
+
+
+@pytest.mark.asyncio
+async def test_transcripts_disabled_falls_back_without_retry(tmp_path: Path) -> None:
+    call_count = {"n": 0}
+
+    class FakeApiInstance:
+        def fetch(self, video_id, languages=None, preserve_formatting=False):
+            call_count["n"] += 1
+            raise _exc(TranscriptsDisabled)
+
+        def list(self, video_id):
+            call_count["n"] += 1
+            raise _exc(TranscriptsDisabled)
+
+    def fake_download(url: str, out_dir: Path) -> Path:
+        p = out_dir / "audio.m4a"
+        p.write_bytes(b"audio")
+        return p
+
+    with patch(
+        "app.resolver.youtube.YouTubeTranscriptApi", return_value=FakeApiInstance()
+    ), patch("app.resolver.youtube._download_audio", side_effect=fake_download):
+        resolved = await try_youtube(
+            "https://youtu.be/dQw4w9WgXcQ",
+            work_dir=tmp_path,
+            prefer_audio=False,
+            languages=None,
+        )
+    assert call_count["n"] == 1
+    assert resolved is not None
+    assert resolved.source_type == "youtube_audio"
+
+
+@pytest.mark.asyncio
+async def test_request_blocked_retries_then_falls_back(tmp_path: Path) -> None:
+    call_count = {"n": 0}
+
+    class FakeApiInstance:
+        def fetch(self, video_id, languages=None, preserve_formatting=False):
+            call_count["n"] += 1
+            raise _exc(RequestBlocked)
+
+        def list(self, video_id):
+            call_count["n"] += 1
+            raise _exc(RequestBlocked)
+
+    def fake_download(url: str, out_dir: Path) -> Path:
+        p = out_dir / "audio.m4a"
+        p.write_bytes(b"audio")
+        return p
+
+    with patch(
+        "app.resolver.youtube.YouTubeTranscriptApi", return_value=FakeApiInstance()
+    ), patch("app.resolver.youtube._download_audio", side_effect=fake_download):
+        resolved = await try_youtube(
+            "https://youtu.be/dQw4w9WgXcQ",
+            work_dir=tmp_path,
+            prefer_audio=False,
+            languages=["pl"],
+        )
+    # 1 initial + 2 retries (configured backoff length) = 3 attempts.
+    assert call_count["n"] == 3
+    assert resolved is not None
+    assert resolved.source_type == "youtube_audio"
+
+
+@pytest.mark.asyncio
+async def test_request_blocked_then_success(tmp_path: Path) -> None:
+    call_count = {"n": 0}
+    fake_fetched = _FakeFetched(
+        [_FakeSnippet("recovered", 0.0, 1.0)], language_code="pl"
+    )
+
+    class FakeApiInstance:
+        def fetch(self, video_id, languages=None, preserve_formatting=False):
+            call_count["n"] += 1
+            if call_count["n"] < 2:
+                raise _exc(YouTubeRequestFailed)
+            return fake_fetched
+
+        def list(self, video_id):
+            return iter([])
+
+    with patch(
+        "app.resolver.youtube.YouTubeTranscriptApi", return_value=FakeApiInstance()
+    ):
+        resolved = await try_youtube(
+            "https://youtu.be/dQw4w9WgXcQ",
+            work_dir=tmp_path,
+            prefer_audio=False,
+            languages=["pl"],
+        )
+    assert call_count["n"] == 2
+    assert resolved is not None
+    assert resolved.source_type == "youtube_transcript"
+    assert resolved.transcript_data["segments"][0]["text"] == "recovered"

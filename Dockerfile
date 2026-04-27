@@ -15,7 +15,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     AUDIO_MCP_DATA_DIR=/app/data \
     AUDIO_MCP_PIPER_VOICE_DIR=/app/models/piper
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg curl ca-certificates && rm -rf /var/lib/apt/lists/*
+    ffmpeg curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
+
+# Deno — JavaScript runtime used by yt-dlp for newer YouTube extraction paths.
+ARG DENO_VERSION=v2.1.4
+RUN curl -fsSL "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
+    -o /tmp/deno.zip \
+    && unzip /tmp/deno.zip -d /usr/local/bin \
+    && rm /tmp/deno.zip \
+    && chmod +x /usr/local/bin/deno
 
 # Piper binary
 ARG PIPER_VERSION=2023.11.14-2
