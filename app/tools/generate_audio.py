@@ -7,6 +7,7 @@ from typing import Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_http_request
+from mcp.types import ToolAnnotations
 
 from app.backends import get_tts_backend
 from app.logging_setup import get_logger
@@ -15,6 +16,7 @@ from app.progress import ProgressReporter
 from app.storage.files import output_path
 from app.tools._async_runner import run_with_soft_cap
 from app.tools._eta import status_payload_with_queue
+from app.tools._schemas import GenerateAudioResult
 
 TtsBackend = Literal["piper", "gcloud", "openai", "gemini"]
 AudioFormat = Literal["mp3", "wav", "opus"]
@@ -26,7 +28,14 @@ def _download_url(settings, uuid: str, ext: str) -> str:
 
 
 def register(mcp: FastMCP) -> None:
-    @mcp.tool
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     async def generate_audio(
         text: str,
         backend: TtsBackend = "piper",
@@ -34,7 +43,7 @@ def register(mcp: FastMCP) -> None:
         language: str = "pl",
         format: AudioFormat = "mp3",
         ctx: Context | None = None,
-    ) -> dict:
+    ) -> GenerateAudioResult:
         """Synthesise an audio file from text.
 
         ``backend`` picks the voice catalogue / quality:
@@ -213,4 +222,4 @@ def register(mcp: FastMCP) -> None:
             on_timeout=_async_payload,
             task_set=background_tasks,
         )
-        return payload
+        return GenerateAudioResult.model_validate(payload)

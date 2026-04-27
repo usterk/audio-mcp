@@ -10,7 +10,8 @@ from app.tools import list_voices as list_voices_tool
 from app.tools import transcribe as transcribe_tool
 
 INSTRUCTIONS = """\
-audio-mcp — speech-to-text and text-to-speech over an MCP boundary.
+audio-mcp — transcribe audio files (uploads, URLs, YouTube) to text
+and synthesise audio files from text.
 
 transcribe(source, mode='fast'|'offline')
   source = YouTube URL, audio URL, upload_id from POST /upload, or

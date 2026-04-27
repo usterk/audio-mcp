@@ -11,6 +11,7 @@ from typing import Literal
 from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_http_request
 from groq import APIError, APIStatusError
+from mcp.types import ToolAnnotations
 
 from app.audio.compress import compress_for_groq
 from app.backends import get_transcription_backend
@@ -20,6 +21,7 @@ from app.resolver import resolve_source
 from app.storage.files import output_path
 from app.tools._async_runner import run_with_soft_cap
 from app.tools._eta import status_payload_with_queue
+from app.tools._schemas import TranscribeResult
 
 Mode = Literal["fast", "offline"]
 _MODE_TO_BACKEND = {"fast": "groq", "offline": "local"}
@@ -45,13 +47,20 @@ def _get_app_state():
 
 
 def register(mcp: FastMCP) -> None:
-    @mcp.tool
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     async def transcribe(
         source: str,
         mode: Mode = "fast",
         language: str = "",
         ctx: Context | None = None,
-    ) -> dict:
+    ) -> TranscribeResult:
         """Transcribe spoken audio to text.
 
         ``source`` accepts:
@@ -310,7 +319,7 @@ def register(mcp: FastMCP) -> None:
             on_timeout=_async_payload,
             task_set=background_tasks,
         )
-        return payload
+        return TranscribeResult.model_validate(payload)
 
 
 def _format_plain_text(segments: list[dict]) -> str:
@@ -419,7 +428,7 @@ def _build_error_payload(exc: Exception, notes: list[str]) -> dict:
     next_steps: list[str] = []
     if isinstance(exc, (APIStatusError, APIError)):
         next_steps = [
-            "retry with backend='local' (faster-whisper, slower but unbounded)",
+            "retry with mode='offline' (local CPU, slower but unbounded)",
             "shorten the source (e.g. split into ≤30 min segments)",
             "verify GROQ_API_KEY and your account quota",
         ]
@@ -430,7 +439,7 @@ def _build_error_payload(exc: Exception, notes: list[str]) -> dict:
         ]
     else:
         next_steps = [
-            "retry with backend='local'",
+            "retry with mode='offline'",
             "inspect server logs for the failing stage",
         ]
     payload = {
