@@ -80,7 +80,7 @@ async def test_transcribe_tool_end_to_end(
             mcp = client.app.state.mcp
             tool_result = await mcp.call_tool(
                 "transcribe",
-                {"source": upload_id, "backend": "groq", "language": "en"},
+                {"source": upload_id, "mode": "fast", "language": "en"},
             )
     finally:
         _current_http_request.reset(token)
@@ -179,9 +179,10 @@ async def test_transcribe_returns_queued_when_prediction_exceeds_budget(
             new=slow_transcribe,
         ):
             client.app.state.settings.groq_api_key = "test-key"
+            client.app.state.settings.default_wait_max_sec = 1
             tool_result = await client.app.state.mcp.call_tool(
                 "transcribe",
-                {"source": upload_id, "backend": "groq", "wait_max_sec": 1},
+                {"source": upload_id, "mode": "fast"},
             )
     finally:
         _current_http_request.reset(token)

@@ -86,7 +86,7 @@ async def test_groq_413_falls_back_to_local(client: TestClient, tmp_data_dir: Pa
             mcp = client.app.state.mcp
             tool_result = await mcp.call_tool(
                 "transcribe",
-                {"source": upload_id, "backend": "groq", "language": "en"},
+                {"source": upload_id, "mode": "fast", "language": "en"},
             )
     finally:
         _current_http_request.reset(token)
@@ -129,7 +129,7 @@ async def test_groq_413_raises_when_fallback_disabled(
             with pytest.raises(ToolError) as exc_info:
                 await client.app.state.mcp.call_tool(
                     "transcribe",
-                    {"source": upload_id, "backend": "groq"},
+                    {"source": upload_id, "mode": "fast"},
                 )
             # The original cause should be the Groq APIStatusError, so the AI
             # caller can still tell the underlying problem from the error tail.

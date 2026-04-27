@@ -6,6 +6,7 @@ import tempfile
 import time
 import uuid as uuidlib
 from pathlib import Path
+from typing import Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_http_request
@@ -20,7 +21,8 @@ from app.storage.files import output_path
 from app.tools._async_runner import run_with_soft_cap
 from app.tools._eta import status_payload_with_queue
 
-VALID_BACKENDS = ("groq", "local")
+Mode = Literal["fast", "offline"]
+_MODE_TO_BACKEND = {"fast": "groq", "offline": "local"}
 # Conservative initial estimate of audio length used to seed the queue
 # before we have actually inspected the source. Once the resolver runs
 # (and especially once the backend reports a real duration) the size_proxy
@@ -46,37 +48,36 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool
     async def transcribe(
         source: str,
-        backend: str = "groq",
+        mode: Mode = "fast",
         language: str = "",
-        model: str = "",
-        wait_max_sec: int | None = None,
         ctx: Context | None = None,
     ) -> dict:
-        """Transcribe audio.
+        """Transcribe spoken audio to text.
 
-        The ``source`` may be a YouTube URL, an HTTP(S) URL to an audio file,
-        an inline ``data:audio/...;base64,...`` payload (<= 10 MB), or a UUID
-        returned by ``POST /upload``. Backends: ``groq`` (default, cloud)
-        or ``local`` (faster-whisper, CPU). Returns a summary plus URLs for
-        the JSON and TXT artefacts in the ``download`` field.
+        ``source`` accepts:
+        - a YouTube URL (any youtube.com / youtu.be / Shorts variant),
+        - an HTTP(S) URL to an audio file,
+        - an inline ``data:audio/...;base64,...`` payload (≤ 10 MB),
+        - an ``upload_id`` returned by ``POST /upload`` (for larger files).
 
-        Long sources are handled automatically: YouTube captions are tried
-        with retry on transient errors, otherwise the audio is downloaded,
-        compressed to opus 16 kHz mono ~24 kbps, and chunked when it would
-        otherwise exceed the cloud request-size limit. If Groq still fails
-        the call falls back to the local CPU backend by default — ``notes``
-        in the response records what happened. Use ``backend='local'``
-        only when you specifically want CPU/off-cloud processing.
+        ``mode`` picks the trade-off, both produce equally accurate text:
+        - ``fast`` — paid cloud backend, finishes in seconds for typical inputs.
+        - ``offline`` — free local CPU backend, slower (≈3 min audio per minute
+          of compute) but never leaves the host. Pick this when the user wants
+          off-cloud / private processing.
 
-        ``wait_max_sec`` (default ``settings.default_wait_max_sec`` = 50)
-        bounds how long the call may block. If the predicted total time
-        exceeds the budget, the response returns immediately with status
-        ``queued``/``running``, the job UUID, and ``check_after_sec`` —
-        poll ``get_job(uuid)`` after that many seconds. On final failure,
-        ``error`` is a JSON object with ``stage`` and ``next_steps``.
+        ``language`` is an optional ISO code (``"pl"``, ``"en"`` …); leave
+        empty for auto-detect.
+
+        Returns a summary plus ``download.json`` / ``download.txt`` URLs and
+        a 500-char ``preview``. Long YouTube videos and large files are
+        handled automatically — captions, downsample, chunking, and a
+        cloud-to-offline fallback. If a job won't fit in the soft cap,
+        you'll get a ``queued`` status with a UUID and ``check_after_sec`` —
+        poll ``get_job(uuid)``. On final failure, ``error.next_steps`` lists
+        what to try.
         """
-        if backend not in VALID_BACKENDS:
-            raise ValueError(f"backend must be one of {VALID_BACKENDS}")
+        backend = _MODE_TO_BACKEND[mode]
 
         state = _get_app_state()
         if state is None:
@@ -98,10 +99,11 @@ def register(mcp: FastMCP) -> None:
         ):
             raise RuntimeError("tool invoked outside of a configured app context")
 
-        budget = wait_max_sec if wait_max_sec is not None else settings.default_wait_max_sec
+        budget = settings.default_wait_max_sec
 
         sem_backend = "faster_whisper" if backend == "local" else "groq"
-        model_key = model or None
+        model_key = None
+        model = ""
 
         # Seed prediction with a conservative audio length until the resolver
         # runs and we know the real value.
@@ -117,7 +119,7 @@ def register(mcp: FastMCP) -> None:
             uuid=uuid,
             kind="transcribe",
             backend=backend,
-            params={"source": source, "language": language, "model": model},
+            params={"source": source, "language": language, "mode": mode},
             predicted_processing_sec=initial_pred.seconds,
             model_key=model_key,
         )

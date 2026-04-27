@@ -123,10 +123,11 @@ async def test_generate_audio_returns_queued_when_prediction_exceeds_budget(
     token = _current_http_request.set(fake_request)
     try:
         with patch("app.backends.tts.piper.PiperBackend.synthesize", new=slow_synth):
+            client.app.state.settings.default_wait_max_sec = 1
             long_text = "Dzień dobry świecie, to jest test. " * 20
             response = await client.app.state.mcp.call_tool(
                 "generate_audio",
-                {"text": long_text, "backend": "piper", "wait_max_sec": 1},
+                {"text": long_text, "backend": "piper"},
             )
             payload = response.structured_content
             # 100 chars * 10 sec/char = 1000s predicted, way over 1s budget.

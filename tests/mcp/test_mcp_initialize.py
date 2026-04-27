@@ -23,4 +23,4 @@ async def test_tools_and_instructions_registered(client: TestClient) -> None:
     instructions = mcp.instructions
     assert "transcribe" in instructions
     assert "generate_audio" in instructions
-    assert "Long audio is handled automatically" in instructions
+    assert "mode='fast'|'offline'" in instructions

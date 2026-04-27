@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import uuid as uuidlib
+from typing import Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_http_request
@@ -15,9 +16,8 @@ from app.storage.files import output_path
 from app.tools._async_runner import run_with_soft_cap
 from app.tools._eta import status_payload_with_queue
 
-VALID_BACKENDS = ("piper", "gcloud", "openai", "gemini")
-VALID_FORMATS = ("mp3", "wav", "opus")
-VALID_NORMALIZE = ("basic", "none")
+TtsBackend = Literal["piper", "gcloud", "openai", "gemini"]
+AudioFormat = Literal["mp3", "wav", "opus"]
 
 
 def _download_url(settings, uuid: str, ext: str) -> str:
@@ -29,37 +29,36 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool
     async def generate_audio(
         text: str,
-        backend: str = "piper",
+        backend: TtsBackend = "piper",
         voice: str = "",
-        model: str = "",
         language: str = "pl",
-        normalize: str = "basic",
-        style: str = "",
-        format: str = "mp3",
-        wait_max_sec: int | None = None,
+        format: AudioFormat = "mp3",
         ctx: Context | None = None,
     ) -> dict:
-        """Generate an audio file from text.
+        """Synthesise an audio file from text.
 
-        Backends: ``piper`` (default, local CPU, free), ``gcloud``
-        (Google Cloud TTS Standard), ``openai`` (gpt-4o-mini-tts, supports
-        a ``style`` instruction). Text preprocessing (``normalize='basic'``)
-        replaces URLs, long hashes and Polish acronyms with phonetic
-        spellings before sending to the backend. Use ``normalize='none'``
-        to bypass preprocessing entirely.
+        ``backend`` picks the voice catalogue / quality:
+        - ``piper``   — local CPU, free, fast, decent neural Polish voices.
+        - ``gcloud``  — Google Cloud TTS, paid, very natural.
+        - ``openai``  — OpenAI gpt-4o-mini-tts, paid, expressive.
+        - ``gemini``  — Google Gemini TTS, paid, expressive.
 
-        ``wait_max_sec`` (default ``settings.default_wait_max_sec`` = 50)
-        bounds how long the call may block. If the predicted total time
-        exceeds the budget, the response returns immediately with status
-        ``queued``/``running``, the job UUID, and ``check_after_sec`` —
-        poll ``get_job(uuid)`` after that many seconds.
+        ``voice`` defaults to a sensible voice for ``language``; call
+        ``list_voices(backend)`` only when the user specifically asked for
+        a named voice.
+
+        Text is normalised automatically per backend (URLs, acronyms,
+        long hashes get spelled out for backends that don't do it
+        themselves). Returns ``download.audio`` URL plus duration / size /
+        chosen voice. Long text auto-queues — poll ``get_job(uuid)`` if
+        the response status is ``queued``.
         """
-        if backend not in VALID_BACKENDS:
-            raise ValueError(f"backend must be one of {VALID_BACKENDS}")
-        if format not in VALID_FORMATS:
-            raise ValueError(f"format must be one of {VALID_FORMATS}")
-        if normalize not in VALID_NORMALIZE:
-            raise ValueError(f"normalize must be one of {VALID_NORMALIZE}")
+        # Internals: normalize is always smart-default; legacy fields kept
+        # for jobs.db schema compatibility.
+        normalize = "basic"
+        model = ""
+        style = ""
+        wait_max_sec: int | None = None
 
         request = get_http_request()
         app = request.app
