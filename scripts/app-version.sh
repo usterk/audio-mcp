@@ -12,7 +12,7 @@
 #   base   = most recent reachable tag matching vX.Y.Z (else 0.0.0)
 #   each commit since the base bumps the version by its conventional-commit type
 #   (oldest→newest, so a higher bump resets the lower fields):
-#     <type>!: ...  or  BREAKING in the subject  → MAJOR  (reset minor+patch)
+#     <type>!: ...  or subject starting "BREAKING CHANGE" → MAJOR (reset min+patch)
 #     feat: / refactor:                          → MINOR  (reset patch)
 #     fix:/docs:/chore:/perf:/ci:/… or anything  → PATCH
 #   No commit is a no-op — version reflects the COUNT and CONTENT of commits.
@@ -47,7 +47,7 @@ fi
 # Oldest → newest so a major/minor bump correctly resets the lower fields.
 while IFS= read -r subj; do
   [ -n "$subj" ] || continue
-  if [[ "$subj" =~ ^[a-zA-Z]+(\([^\)]*\))?!: ]] || [[ "$subj" == *"BREAKING"* ]]; then
+  if [[ "$subj" =~ ^[a-zA-Z]+(\([^\)]*\))?!: ]] || [[ "$subj" =~ ^BREAKING[\ -]CHANGE ]]; then
     maj=$((maj + 1)); min=0; pat=0
   elif [[ "$subj" =~ ^(feat|refactor)(\([^\)]*\))?: ]]; then
     min=$((min + 1)); pat=0
