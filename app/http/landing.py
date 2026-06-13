@@ -4,6 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
+from app.version import VERSION
+
 router = APIRouter()
 
 _HTML = """<!doctype html>
@@ -19,6 +21,12 @@ _HTML = """<!doctype html>
 no separate guide tool to invoke.</p>
 </body></html>
 """
+
+_HTML = _HTML.replace(
+    "</body></html>",
+    f'<footer style="margin-top:2rem;font-size:12px;opacity:.5">'
+    f"audio-mcp <code>v{VERSION}</code></footer>\n</body></html>",
+)
 
 
 @router.get("/", response_class=HTMLResponse)

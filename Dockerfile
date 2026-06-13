@@ -10,10 +10,13 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 
 FROM python:3.12-slim AS runtime
+# App version baked at build time by the Aurora runner; read at runtime (version.py).
+ARG APP_VERSION=0.0.0-dev
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
     AUDIO_MCP_DATA_DIR=/app/data \
-    AUDIO_MCP_PIPER_VOICE_DIR=/app/models/piper
+    AUDIO_MCP_PIPER_VOICE_DIR=/app/models/piper \
+    APP_VERSION=${APP_VERSION}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
 
